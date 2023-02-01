@@ -1,0 +1,75 @@
+version: '3'
+# This adds first ipfs node and first cluster node in the network 
+# needs to bootstrap to self manually 
+
+services:
+
+##################################################################################
+## Cluster PEER <0> ##############################################################
+##################################################################################
+
+  ipfs:
+    container_name: ipfs
+    build: ./first-node/compose
+    ports:
+      # ipfs swarm - expose to communicate with other peers
+      - "4001:4001" 
+      # ipfs api - expose to communicate with ipfs-api
+      - "127.0.0.1:5001:5001" 
+      # ipfs gateway - expose if needed/wanted
+      - "127.0.0.1:8080:8080" 
+    volumes:
+      #./compose/ipfs0 path for local IPFS persistent data. Better not to comment it
+      - /home/$USER/.compose/ipfs:/data/ipfs
+      # map a local dirctory to act like shared directory between host and ipfs instance
+      # comment it if not needed
+      - /home/$USER/export:/export
+    environment:
+      # this is the key to allow membership in private IPFS swarm. 
+      SWARM_KEY: 2c2fa323fd396ac146abac7c7b9a99d2ca4a035644ab5207ed22570ff5bf8aa7
+      # add space separated multiaddress as peer address
+      PRIVATE_PEER_MUL_ADDR:  '/ip4/5.19.46.40/tcp/4001/p2p/12D3KooWAUvb3F69e9fCJ6AXwgZGEre3G59VFEVurgeyCYDvR51K'
+
+
+  
+  cluster:
+    container_name: cluster
+    image: ipfs/ipfs-cluster:latest
+    depends_on:
+      - ipfs
+    environment:
+      CLUSTER_PEERNAME: cluster
+      CLUSTER_SECRET: 190355e6838d1823bcb1ce727c83d7accfad3d226fe58b37fb0d6b830a11c082 #same as other 
+      CLUSTER_IPFSHTTP_NODEMULTIADDRESS: /dns4/ipfs/tcp/5001
+      CLUSTER_CRDT_TRUSTEDPEERS: '*' # Trust all peers in Cluster
+      CLUSTER_RESTAPI_HTTPLISTENMULTIADDRESS: /ip4/0.0.0.0/tcp/9094 # Expose API
+      CLUSTER_MONITORPINGINTERVAL: 2s # Speed up peer discovery
+      CLUSTER_REPLICATIONFACTORMIN: 1 # Minimum numbers of ipfs nodes to pin in. throws error if not able to pin to min
+      CLUSTER_REPLICATIONFACTORMAX: 4 # Maximum numbers of ipfs nodes to pin in. Do not throws error if not able to pin to max
+      CLUSTER_PEERADDRESSES:  '/ip4/5.19.46.40/tcp/9096/p2p/12D3KooWKaTfSm6YkiU9yDuS7qAp34nUfb3cDtuKkxcWPtSZsQ6K'
+    ports:
+          # Open API port (allows ipfs-cluster-ctl usage on host)
+          - "127.0.0.1:9094:9094"
+          # The cluster swarm port would need  to be exposed if this container
+          # was to connect to cluster peers on other hosts.
+          # - "9095:9095" # Cluster IPFS Proxy endpoint
+          - "9096:9096" # Cluster swarm endpoint
+    volumes:
+      - /home/$USER/.compose/cluster:/data/ipfs-cluster
+
+  api:
+    container_name: clusterapi
+    build: ./clusterapi
+    ports:
+      - "3000:3000"
+    environment:
+      - CLUSTER_CONF_CID_VERSION=cid-version=1
+      - CLUSTER_URL=http://cluster:9094
+      - IPFS_URL=http://localhost
+
+  nginx:
+    container_name: nginx
+    build: ./nginx
+    ports:
+      - "80:80"
+
